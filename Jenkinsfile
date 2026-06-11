@@ -5,6 +5,7 @@ pipeline {
     environment {
         IMAGE_NAME = "my-awesome-app"
         IMAGE_TAG = "${env.BUILD_NUMBER}" // ប្រើលេខ Build របស់ Jenkins ជា Tag (ឧទាហរណ៍: my-awesome-app:5)
+        DOCKER_USER = "koeyoungan"
     }
 
     stages {
@@ -19,8 +20,8 @@ pipeline {
             steps {
                 echo "កំពុង Build Docker Image: ${IMAGE_NAME}:${IMAGE_TAG}..."
                 // ដំណើរការបញ្ជា docker build
-                sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
-                sh 'docker build -t ${IMAGE_NAME}:latest .' // បង្កើត Tag latest មួយទៀត
+                sh 'docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG} .'
+                sh 'docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .' // បង្កើត Tag latest មួយទៀត
             }
         }
         
