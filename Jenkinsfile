@@ -1,73 +1,68 @@
 pipeline {
     agent any
-    
-    // កំណត់អថេរ (Environment Variables) ដើម្បីងាយស្រួលប្រើ
+
     environment {
-        IMAGE_NAME = "my-awesome-app"
-        IMAGE_TAG = "${env.BUILD_NUMBER}" // ប្រើលេខ Build របស់ Jenkins ជា Tag (ឧទាហរណ៍: my-awesome-app:5)
-        DOCKER_USER = "koeyoungan"
+        IMAGE_NAME = "koeyoungan/myapp"
+        IMAGE_TAG = "latest"
     }
 
     stages {
-        stage('ទាញយកកូដ (Checkout)') {
+
+        stage('Clone') {
             steps {
-                echo 'កំពុងទាញយកកូដចុងក្រោយពី GitHub...'
                 checkout scm
             }
         }
-        
-        stage('វេចខ្ចប់ (Build Docker Image)') {
+
+        stage('Build Docker Image') {
             steps {
-                echo "កំពុង Build Docker Image: ${IMAGE_NAME}:${IMAGE_TAG}..."
-                // ដំណើរការបញ្ជា docker build
-                sh 'docker build -t ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG} .'
-                sh 'docker build -t ${DOCKER_USER}/${IMAGE_NAME}:latest .' // បង្កើត Tag latest មួយទៀត
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
             }
         }
-        
-        stage('ត្រួតពិនិត្យ (Verify Image)') {
+
+        stage('Push Docker Image') {
             steps {
-                echo 'កំពុងត្រួតពិនិត្យមើល Image ដែលទើបតែ Build រួច...'
-                sh 'docker image ls | grep ${IMAGE_NAME}'
-            }
-        }
-           stage('បញ្ជូនទៅ Docker Hub (Push Image)') {
-            steps {
-                echo 'កំពុងភ្ជាប់ និងបញ្ជូន Image ទៅកាន់ Docker Hub...'
-                // ប្រើប្រាស់ Credentials ដែលយើងបានលាក់ទុកក្នុង Jenkins
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_PWD', usernameVariable: 'DOCKER_USR')]) {
-                    // Login ចូល Docker Hub ដោយសុវត្ថិភាព
-                    sh 'echo $DOCKER_PWD | docker login -u $DOCKER_USR --password-stdin'
-                    // Push Image
-                    sh 'docker push ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}'
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub',
+                    usernameVariable: 'USER',
+                    passwordVariable: 'PASS'
+                )]) {
+
+                    sh '''
+                    echo $PASS | docker login -u $USER --password-stdin
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
                 }
             }
         }
-        
-        stage('ដាក់ពង្រាយ (Deploy to Server)') {
+
+        stage('Deploy to EC2') {
+
             steps {
-                echo 'កំពុងទាញយក និងដាក់ឱ្យដំណើរការ...'
-                // 1. បញ្ឈប់ និងលុប Container ចាស់ (ប្រសិនបើមាន) ដើម្បីកុំឱ្យជាន់គ្នា
-                sh '''
-                    docker stop ${IMAGE_NAME} || true
-                    docker rm ${IMAGE_NAME} || true
-                '''
-                
-                // 2. ដំណើរការ Container ថ្មី
-                // ឧទាហរណ៍ ភ្ជាប់ Port 80 ទូទៅ ទៅកាន់ Port 8000 របស់កម្មវិធី Django
-                sh 'docker run -d --name ${IMAGE_NAME} -p 80:8000 ${DOCKER_USER}/${IMAGE_NAME}:${IMAGE_TAG}'
+
+                sshagent(['ec2-ssh']) {
+
+                    sh '''
+
+                    ssh -o StrictHostKeyChecking=no ubuntu@51.21.252.151 "
+
+                    docker pull $IMAGE_NAME:$IMAGE_TAG
+
+                    docker stop myapp || true
+
+                    docker rm myapp || true
+
+                    docker run -d \
+                    --name myapp \
+                    -p 80:80 \
+                    --restart always \
+                    $IMAGE_NAME:$IMAGE_TAG
+
+                    "
+
+                    '''
+                }
             }
         }
     }
-    
-    // សម្អាតបរិស្ថានការងារក្រោយពេលធ្វើចប់
-    post {
-        always {
-            echo 'កំពុងសម្អាត Docker Images ចាស់ៗ...'
-            sh 'docker image prune -f'
-            sh 'docker logout'
-        }
-    }
 }
-
-    
